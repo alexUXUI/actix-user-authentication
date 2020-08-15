@@ -4,6 +4,7 @@ use serde::{Serialize, Deserialize};
 
 use crate::schema::users;
 use crate::models;
+use crate::config::Config;
 
 #[derive(Debug, Queryable, Insertable, Serialize, Deserialize)]
 #[table_name="users"]
@@ -76,35 +77,27 @@ trait UserPassWord {
 
 impl UserPassWord for User {
     fn encrypt_password(password: String) -> String {
+        let config = Config::from_env().expect("Must set env vars");
         let mut hasher = Hasher::default();
         // @todo put hash and secret in configs 
         let hash = hasher
             .with_password(password)
-            .with_secret_key("\
-                secret key that you should really store in a .env file \
-                instead of in code, but this is just an example\
-            ")
+            .with_secret_key(config.secret_key)
             .hash()
             .unwrap();
     
-        println!("{}", &hash);
         hash
     }
 
     fn verify_password(password: String) -> Result<bool, bool> {
+        let config = Config::from_env().expect("Must set env vars");
         let mut verifier = Verifier::default();
+
         // @todo put hash and secret in configs
         let is_valid = verifier
-            .with_hash("
-                $argon2id$v=19$m=4096,t=192,p=4$\
-                o2y5PU86Vt+sr93N7YUGgC7AMpTKpTQCk4tNGUPZMY4$\
-                yzP/ukZRPIbZg6PvgnUUobUMbApfF9RH6NagL9L4Xr4\
-            ")
+            .with_hash(config.hash_algo)
             .with_password(password)
-            .with_secret_key("\
-                secret key that you should really store in a .env file \
-                instead of in code, but this is just an example\
-            ")
+            .with_secret_key(config.secret_key)
             .verify()
             .unwrap_or(false);
     

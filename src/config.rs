@@ -8,7 +8,9 @@ pub struct Config {
     pub host: String,
     pub port: i32,
     pub app_env: String,
-    pub database_url: String
+    pub database_url: String,
+    pub hash_algo: String,
+    pub secret_key: String
 }
 
 impl Config {
