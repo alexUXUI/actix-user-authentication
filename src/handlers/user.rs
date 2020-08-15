@@ -1,4 +1,4 @@
-use crate::models::user::{User};
+use crate::models::user::{User, NewUser};
 use crate::db::db_connection::{ pg_pool_handler, PgPool };
 use actix_web::{ Responder, web, HttpResponse };
 
@@ -24,4 +24,16 @@ pub async fn get_user(pool: web::Data<PgPool>, id: web::Path<i32>) -> impl Respo
     let user = User::get(&pg_pool, *id);
 
     HttpResponse::Ok().json(UserResponse { user })
+}
+
+#[derive(Serialize)]
+pub struct NewUserResponse {
+    new_user: NewUser
+}
+
+pub async fn create_user(pool: web::Data<PgPool>, user: web::Json<NewUser>) -> impl Responder {
+    let pg_pool = pg_pool_handler(pool).expect("Could not connect to PG from create user handler");
+    let new_user = User::create(&pg_pool, user);
+
+    HttpResponse::Ok().json(NewUserResponse { new_user: new_user.unwrap() })
 }
