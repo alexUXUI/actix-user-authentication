@@ -1,7 +1,8 @@
 use diesel::{PgConnection, RunQueryDsl};
-use crate::schema::users;
-use serde::{Serialize, Deserialize};
 use argonautica::{Hasher, Verifier};
+use serde::{Serialize, Deserialize};
+
+use crate::schema::users;
 use crate::models;
 
 #[derive(Debug, Queryable, Insertable, Serialize, Deserialize)]
@@ -45,12 +46,12 @@ impl User {
 
     pub fn create(pool: &PgConnection, user: actix_web::web::Json<models::user::NewUser>) -> Result<NewUser, String> {
         use crate::schema::users::dsl::*;
-        use crate::schema::users::dsl::{name};
+        use crate::schema::users::dsl::{email};
         use crate::diesel::QueryDsl;
         use crate::diesel::ExpressionMethods;
 
         let user_already_exists = users
-            .filter(name.eq(&user.name))
+            .filter(email.eq(&user.email))
             .load::<User>(pool);
 
         if user_already_exists.unwrap().is_empty() {
@@ -64,7 +65,7 @@ impl User {
             return Ok(new_user);
         }
 
-        Err(String::from("Couldn't create new user"))
+        Err(String::from("Email already in use"))
     }
 }
 
@@ -76,6 +77,7 @@ trait UserPassWord {
 impl UserPassWord for User {
     fn encrypt_password(password: String) -> String {
         let mut hasher = Hasher::default();
+        // @todo put hash and secret in configs 
         let hash = hasher
             .with_password(password)
             .with_secret_key("\
@@ -91,6 +93,7 @@ impl UserPassWord for User {
 
     fn verify_password(password: String) -> Result<bool, bool> {
         let mut verifier = Verifier::default();
+        // @todo put hash and secret in configs
         let is_valid = verifier
             .with_hash("
                 $argon2id$v=19$m=4096,t=192,p=4$\

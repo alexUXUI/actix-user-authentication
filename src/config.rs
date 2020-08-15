@@ -20,6 +20,7 @@ impl Config {
         let mut cfg = config::Config::new();
 
         match current_environment.as_ref() {
+            // @todo these env strings should probably be in a const or enum
             "development" => {
                 cfg.merge(config::File::with_name(".env.dev.json")).unwrap();
                 cfg.try_into()
