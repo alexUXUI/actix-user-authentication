@@ -36,11 +36,6 @@ pub struct UserLoggedIn {
     jwt: String
 }
 
-#[derive(Debug, Serialize)]
-pub struct UserLoggedInResponse {
-    user_logged_in: UserLoggedIn
-}
-
 impl User {
     pub fn get_all(pool: &PgConnection) -> Vec<User> {
         use crate::schema::users::dsl::*;
