@@ -31,13 +31,13 @@ use env_logger::Env;
 #[actix_rt::main]
 async fn main() -> Result<(), std::io::Error> {
 
-    dotenv().ok(); // load env vars
+    dotenv().ok(); 
 
     std::env::set_var("RUST_LOG", "actix_web=info,actix_server=info");
     std::env::set_var("RUST_BACKTRACE", "1");
-    env_logger::from_env(Env::default().default_filter_or("info")).init(); // load logger
+    env_logger::from_env(Env::default().default_filter_or("info")).init(); 
 
-    let config = Config::from_env().expect("Must set env vars"); // create a config struct out of the env vars
+    let config = Config::from_env().expect("Must set env vars"); 
 
     println!("Start server {:#?}", config);
 

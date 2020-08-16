@@ -1,4 +1,4 @@
-use crate::models::user::{User, NewUser};
+use crate::models::user::{User, NewUser, UserLogin, UserLoggedIn, UserLoggedInResponse};
 use crate::db::db_connection::{ pg_pool_handler, PgPool };
 use actix_web::{ Responder, web, HttpResponse };
 
@@ -36,4 +36,11 @@ pub async fn create_user(pool: web::Data<PgPool>, user: web::Json<NewUser>) -> i
     let new_user = User::create(&pg_pool, user);
     // @todo make sure response can handle potential failer 
     HttpResponse::Ok().json(NewUserResponse { new_user: new_user.unwrap() })
+}
+
+pub async fn login_user(pool: web::Data<PgPool>, user: web::Json<UserLogin>) -> impl Responder {
+    let pool = pg_pool_handler(pool).expect("Could not connect to PG from login handler");
+    let _logged_in_user = User::login(&pool, user);
+
+    HttpResponse::Ok().body("logged in")
 }

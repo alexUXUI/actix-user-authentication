@@ -5,5 +5,6 @@ pub async fn validator(
     req: ServiceRequest,
     _credentials: BasicAuth, // @todo change this to bearer scheme
 ) -> Result<ServiceRequest, Error> {
+    println!("request {:#?}", req);
     Ok(req)
 }

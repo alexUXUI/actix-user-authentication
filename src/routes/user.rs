@@ -6,4 +6,5 @@ pub fn user_routes() -> Scope {
         .route("/all", web::get().to(get_users))
         .route("/create", web::post().to(create_user))
         .route("/{id}", web::get().to(get_user))
+        .route("/login", web::post().to(login_user))
 }
