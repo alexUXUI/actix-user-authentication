@@ -2,6 +2,9 @@ use diesel::{PgConnection, RunQueryDsl};
 use argonautica::{Hasher, Verifier};
 use serde::{Serialize, Deserialize};
 
+use jsonwebtoken::errors::ErrorKind;
+use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
+
 use crate::schema::users;
 use crate::models;
 use crate::config::Config;
@@ -34,6 +37,11 @@ pub struct UserLoggedIn {
     name: String,
     email: String,
     jwt: String
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    exp: usize,
 }
 
 impl User {
@@ -81,7 +89,7 @@ impl User {
         Err(String::from("Email already in use"))
     }
 
-    pub fn login(pool: &PgConnection, user: actix_web::web::Json<models::user::UserLogin>) -> Result<bool, String> {
+    pub fn login(pool: &PgConnection, user: actix_web::web::Json<models::user::UserLogin>) -> Result<UserLoggedIn, String> {
         use crate::schema::users::dsl::*;
         use crate::schema::users::dsl::{name};
         use crate::diesel::QueryDsl;
@@ -92,17 +100,34 @@ impl User {
             .get_result::<User>(pool)
             .expect("Could not find user in PG");
 
-        match User::verify_password(existing_user.password.to_string(), user.password.to_string()) {
-            Ok(result) => {
-                println!("Password checks out");
-                // @todo add jwt here
-                // then send it back with the logged in user response
+        let password_is_valid = User::verify_password(existing_user.password.to_string(), user.password.to_string());
+        
+        match password_is_valid {
+            Ok(_) => {
+                let key = b"secret";
+                
+                let claims = Claims { exp: 10000000000 };
+                
+                let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret(key)) {
+                    Ok(t) => t,
+                    Err(_) => "Could not create a JWT".to_string(), 
+                };
+            
+                let logged_in_user = UserLoggedIn {
+                    email: existing_user.email,
+                    jwt: token,
+                    name: existing_user.name
+                };
+
+                Ok(logged_in_user)
             },
-            // or else do not create a jwt
-            Err(_) => println!("Password does not check out")
+            Err(_) => {
+                println!("Password does not check out");
+                // or else do not create a jwt
+                Err("Password is not valid".to_string())
+            }
         }
 
-        Ok(true)
     }
 }
 

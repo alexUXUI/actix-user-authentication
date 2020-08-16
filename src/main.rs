@@ -46,7 +46,7 @@ async fn main() -> Result<(), std::io::Error> {
         App::new()
             .wrap(Logger::default())
             .wrap(Logger::new("%a %t %r %s %b %{Referer}i %{User-Agent}i %T"))
-            .wrap(auth)
+            // .wrap(auth)
             .data(establish_connection())
             .service(status)
             .service(user_routes())

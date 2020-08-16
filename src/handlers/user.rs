@@ -45,7 +45,9 @@ pub struct UserLoggedInResponse {
 
 pub async fn login_user(pool: web::Data<PgPool>, user: web::Json<UserLogin>) -> impl Responder {
     let pool = pg_pool_handler(pool).expect("Could not connect to PG from login handler");
-    let _logged_in_user = User::login(&pool, user);
+    let logged_in_user = User::login(&pool, user);
+
+    println!("Does handler have access to logged in user with JWT? {:#?}", logged_in_user);
 
     HttpResponse::Ok().body("logged in")
 }
