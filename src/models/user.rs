@@ -2,8 +2,7 @@ use diesel::{PgConnection, RunQueryDsl};
 use argonautica::{Hasher, Verifier};
 use serde::{Serialize, Deserialize};
 
-use jsonwebtoken::errors::ErrorKind;
-use jsonwebtoken::{encode, decode, Header, Algorithm, Validation, EncodingKey, DecodingKey};
+use crate::modules::jwt::jwt_factory;
 
 use crate::schema::users;
 use crate::models;
@@ -28,20 +27,20 @@ pub struct NewUser {
 
 #[derive(Debug, Deserialize)]
 pub struct UserLogin {
-    name: String,
-    password: String
+    pub name: String,
+    pub password: String
 }
 
 #[derive(Debug, Serialize)]
 pub struct UserLoggedIn {
-    name: String,
-    email: String,
-    jwt: String
+    pub name: String,
+    pub email: String,
+    pub jwt: String
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Claims {
-    exp: usize,
+    pub exp: usize,
 }
 
 impl User {
@@ -104,30 +103,18 @@ impl User {
         
         match password_is_valid {
             Ok(_) => {
-                let key = b"secret";
-                
-                let claims = Claims { exp: 10000000000 };
-                
-                let token = match encode(&Header::default(), &claims, &EncodingKey::from_secret(key)) {
-                    Ok(t) => t,
-                    Err(_) => "Could not create a JWT".to_string(), 
-                };
-            
                 let logged_in_user = UserLoggedIn {
                     email: existing_user.email,
-                    jwt: token,
+                    jwt: jwt_factory(),
                     name: existing_user.name
                 };
 
                 Ok(logged_in_user)
             },
             Err(_) => {
-                println!("Password does not check out");
-                // or else do not create a jwt
                 Err("Password is not valid".to_string())
             }
         }
-
     }
 }
 
@@ -145,7 +132,7 @@ impl UserPassWord for User {
 
         hasher
             .with_password(password)
-            .with_secret_key(config.secret_key)
+            .with_secret_key(config.hash_secret_key)
             .hash()
     }
 
@@ -157,7 +144,7 @@ impl UserPassWord for User {
         verifier
             .with_hash(hash)
             .with_password(password)
-            .with_secret_key(config.secret_key)
+            .with_secret_key(config.hash_secret_key)
             .verify()
     }
 }

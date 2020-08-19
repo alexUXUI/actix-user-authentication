@@ -12,21 +12,32 @@ pub mod routes;
 pub mod handlers;
 pub mod models;
 pub mod middleware;
+pub mod modules;
 
 mod schema;
 mod config;
 
 use actix_web::{App, HttpServer, middleware::Logger};
-use actix_web_httpauth::middleware::HttpAuthentication;
 
 use db::db_connection::{establish_connection};
 use routes::user::user_routes;
+use routes::login::login;
 use handlers::health::status;
-use middleware::authentication::validator;
 
 use crate::config::Config;
 use dotenv::dotenv;
 use env_logger::Env;
+
+use middleware::auth;
+use actix_web::middleware::errhandlers::{ErrorHandlers, ErrorHandlerResponse};
+use actix_web::{http, dev, Result};
+
+fn render_500<B>(mut res: dev::ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>> {
+    res.response_mut()
+       .headers_mut()
+       .insert(http::header::CONTENT_TYPE, http::HeaderValue::from_static("Error"));
+    Ok(ErrorHandlerResponse::Response(res))
+}
 
 #[actix_rt::main]
 async fn main() -> Result<(), std::io::Error> {
@@ -42,14 +53,18 @@ async fn main() -> Result<(), std::io::Error> {
     println!("Start server {:#?}", config);
 
     HttpServer::new(|| {
-        let auth = HttpAuthentication::basic(validator);
         App::new()
             .wrap(Logger::default())
             .wrap(Logger::new("%a %t %r %s %b %{Referer}i %{User-Agent}i %T"))
-            // .wrap(auth)
+            .wrap(auth::Auth)
             .data(establish_connection())
             .service(status)
+            .service(login())
             .service(user_routes())
+            .wrap(
+                ErrorHandlers::new()
+                    .handler(http::StatusCode::INTERNAL_SERVER_ERROR, render_500),
+            )
     })
     .bind(format!("{}:{}", config.host, config.port))?
     .run()

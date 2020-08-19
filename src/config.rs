@@ -10,7 +10,8 @@ pub struct Config {
     pub app_env: String,
     pub database_url: String,
     pub hash_algo: String,
-    pub secret_key: String
+    pub hash_secret_key: String,
+    pub jwt_secret_key: String
 }
 
 impl Config {
