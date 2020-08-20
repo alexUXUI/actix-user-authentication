@@ -7,6 +7,9 @@ extern crate serde_json;
 #[macro_use]
 extern crate serde_derive;
 
+mod schema;
+mod config;
+
 pub mod db;
 pub mod routes;
 pub mod handlers;
@@ -14,23 +17,18 @@ pub mod models;
 pub mod middleware;
 pub mod modules;
 
-mod schema;
-mod config;
-
-use actix_web::{App, HttpServer, middleware::Logger};
-
 use db::db_connection::{establish_connection};
 use routes::user::user_routes;
 use routes::login::login;
 use handlers::health::status;
+use middleware::auth;
+
+use actix_web::{App, HttpServer, middleware::Logger, http, dev, Result};
+use actix_web::middleware::errhandlers::{ErrorHandlers, ErrorHandlerResponse};
 
 use crate::config::Config;
 use dotenv::dotenv;
 use env_logger::Env;
-
-use middleware::auth;
-use actix_web::middleware::errhandlers::{ErrorHandlers, ErrorHandlerResponse};
-use actix_web::{http, dev, Result};
 
 fn render_500<B>(mut res: dev::ServiceResponse<B>) -> Result<ErrorHandlerResponse<B>> {
     res.response_mut()

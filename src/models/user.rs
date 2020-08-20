@@ -1,12 +1,11 @@
 use diesel::{PgConnection, RunQueryDsl};
-use argonautica::{Hasher, Verifier};
 use serde::{Serialize, Deserialize};
 
 use crate::modules::jwt::jwt_factory;
 
 use crate::schema::users;
 use crate::models;
-use crate::config::Config;
+use crate::modules::hash::{hash_password, verify_password};
 
 #[derive(Debug, Queryable, Insertable, Serialize, Deserialize)]
 #[table_name="users"]
@@ -14,6 +13,7 @@ pub struct User {
     pub id: i32,
     pub name: String,
     pub email: String,
+    #[serde(skip)]
     pub password: String,
 }
 
@@ -72,16 +72,26 @@ impl User {
 
         let user_already_exists = users
             .filter(email.eq(&user.email))
-            .load::<User>(pool);
+            .load::<User>(pool)
+            .unwrap();
 
-        if user_already_exists.unwrap().is_empty() {
-            let user_password = User::encrypt_password(user.password.to_string()).expect("Could not encrypt password");
+        if user_already_exists.is_empty() {
+            
+            let user_password = hash_password(user.password
+                .to_string())
+                .expect("Could not hash password");
+
             let new_user = NewUser {
                 name: user.name.to_string(),
                 email: user.email.to_string(),
-                password: user_password.to_string()
+                password: user_password
             };
-            diesel::insert_into(users).values(&new_user).execute(pool).expect("Could not create new user");
+            
+            diesel::insert_into(users)
+                .values(&new_user)
+                .execute(pool)
+                .expect("Could not create new user");
+
             return Ok(new_user);
         }
 
@@ -96,55 +106,48 @@ impl User {
 
         let existing_user = users
             .filter(name.eq(&user.name))
-            .get_result::<User>(pool)
-            .expect("Could not find user in PG");
-
-        let password_is_valid = User::verify_password(existing_user.password.to_string(), user.password.to_string());
+            .get_result::<User>(pool);
         
-        match password_is_valid {
-            Ok(_) => {
-                let logged_in_user = UserLoggedIn {
-                    email: existing_user.email,
-                    jwt: jwt_factory(),
-                    name: existing_user.name
-                };
-
-                Ok(logged_in_user)
-            },
-            Err(_) => {
-                Err("Password is not valid".to_string())
-            }
+        match existing_user {
+           Ok(registered_user) => User::handle_login(registered_user, user),
+           Err(error) => Err(String::from("User does not exist"))
         }
     }
 }
 
+
 trait UserPassWord {
-    fn encrypt_password(password: String) -> Result<String, argonautica::Error>;
-    fn verify_password(hash: String, password: String) -> Result<bool, argonautica::Error>;
+    fn handle_login(existing_user: User, user: actix_web::web::Json<models::user::UserLogin>) -> Result<UserLoggedIn, String>;
 }
 
 impl UserPassWord for User {
 
-    fn encrypt_password(password: String) -> Result<String, argonautica::Error> {
-        let config = Config::from_env().expect("Must set env vars in config file");
+    fn handle_login(existing_user: User, user: actix_web::web::Json<models::user::UserLogin>) -> Result<UserLoggedIn, String> {
 
-        let mut hasher = Hasher::default();
-
-        hasher
-            .with_password(password)
-            .with_secret_key(config.hash_secret_key)
-            .hash()
-    }
-
-    fn verify_password(hash: String, password: String) -> Result<bool, argonautica::Error> {
-        let config = Config::from_env().expect("Must set env vars in config file");
-
-        let mut verifier = Verifier::default();
+        let password_is_valid = verify_password(
+            existing_user.password, 
+            user.password.to_string()
+        );
         
-        verifier
-            .with_hash(hash)
-            .with_password(password)
-            .with_secret_key(config.hash_secret_key)
-            .verify()
+        match password_is_valid {
+            Ok(result) => {
+                match result {
+                    true => {
+                        let logged_in_user = UserLoggedIn {
+                            email: existing_user.email,
+                            jwt: jwt_factory(),
+                            name: existing_user.name
+                        };
+                        Ok(logged_in_user)
+                    },
+                    false => {
+                        Err(String::from("Incorrect password"))
+                    }
+                }
+            },
+            Err(_) => {
+                Err(String::from("Could not verify password"))
+            }
+        }        
     }
 }

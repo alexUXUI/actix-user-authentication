@@ -27,20 +27,47 @@ pub async fn get_user(pool: web::Data<PgPool>, id: web::Path<i32>) -> impl Respo
 }
 
 #[derive(Serialize)]
-pub struct NewUserResponse {
-    new_user: NewUser
+pub struct CreateUserResponse {
+    name: String,
+    email: String
+}
+
+#[derive(Serialize)] 
+pub struct CreateUserError {
+    message: String,
+    error: String
 }
 
 pub async fn create_user(pool: web::Data<PgPool>, user: web::Json<NewUser>) -> impl Responder {
     let pg_pool = pg_pool_handler(pool).expect("Could not connect to PG from create user handler");
     let new_user = User::create(&pg_pool, user);
-    // @todo make sure response can handle potential failer 
-    HttpResponse::Ok().json(NewUserResponse { new_user: new_user.unwrap() })
+    
+    match new_user {
+        Ok(new_user) => {
+            HttpResponse::Ok().json(CreateUserResponse { 
+                name: new_user.name, 
+                email: new_user.email 
+            })
+        }
+        Err(error) => {
+            HttpResponse::Ok().json(CreateUserError { 
+                message: String::from("Failed to create user"),
+                error
+            })
+        }
+    }
+    
 }
 
 #[derive(Debug, Serialize)]
-pub struct UserLoggedInResponse {
+pub struct UserLoginResponse {
     user_logged_in: UserLoggedIn
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserLoginError {
+    message: String,
+    error: String
 }
 
 pub async fn login_user(pool: web::Data<PgPool>, user: web::Json<UserLogin>) -> impl Responder {
@@ -48,14 +75,17 @@ pub async fn login_user(pool: web::Data<PgPool>, user: web::Json<UserLogin>) -> 
     let pool = pg_pool_handler(pool).expect("Could not connect to PG from login handler");
     let logged_in_user = User::login(&pool, user);
 
-    HttpResponse::Ok().json(UserLoggedInResponse {
-        user_logged_in: match logged_in_user {
-            Ok(user) => user,
-            _ => UserLoggedIn {
-                    name: String::from(""),
-                    email: String::from(""),
-                    jwt: String::from("")
-                }
-            }
-    })
+    match logged_in_user {
+        Ok(user) => {
+            HttpResponse::Ok().json(UserLoginResponse {
+                user_logged_in: user
+            })
+        },
+        Err(error) => {
+            HttpResponse::Ok().json(UserLoginError {
+                message: String::from("Could not log user in"),
+                error
+            })
+        }
+    }
 }
