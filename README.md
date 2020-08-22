@@ -33,10 +33,36 @@ http://localhost:3000/users/login
 ```json
 {
     "message": "Could not log user in",
-    "error": "User does not exist" | "Incorrect password"
+    // one of the following as a string:
+    "error": ["Could not log user out"] 
 }
 ```
 
+#### `/logout` | `POST` -> bool
+Request
+```shell
+curl -X POST \
+-H "Content-type: application/json" \
+-d '{"id": "2" }' \ 
+http://localhost:3000/users/logout
+```
+2XX Response 
+```json
+{
+    "user_logged_out": true
+}
+```
+
+4XX Response 
+
+```json
+{
+    "user_logged_out": false,
+    "message": "Could not log user in",
+    // one of the following as a string:
+    "error": ["User does not exist",  "Incorrect password", "Could not verify password"] 
+}
+```
 
 ### `/users`
 #### `/all` | `GET` ->  All users 
@@ -110,7 +136,6 @@ Response
 2) Use a third-party authentication strategy
 
 3) Make routes for:
-- log out
 - reauth
 - delete
 - update

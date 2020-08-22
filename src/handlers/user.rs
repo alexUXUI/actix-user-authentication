@@ -1,4 +1,4 @@
-use crate::models::user::{User, NewUser, UserLogin, UserLoggedIn};
+use crate::models::user::{User, NewUser, UserLogin, UserLoggedIn, UserLogout};
 use crate::db::db_connection::{ pg_pool_handler, PgPool };
 use actix_web::{ Responder, web, HttpResponse };
 
@@ -56,7 +56,6 @@ pub async fn create_user(pool: web::Data<PgPool>, user: web::Json<NewUser>) -> i
             })
         }
     }
-    
 }
 
 #[derive(Debug, Serialize)]
@@ -85,6 +84,38 @@ pub async fn login_user(pool: web::Data<PgPool>, user: web::Json<UserLogin>) -> 
             HttpResponse::Ok().json(UserLoginError {
                 message: String::from("Could not log user in"),
                 error
+            })
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserLogoutResponse {
+    user_logged_out: bool
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserLogoutError {
+    user_logged_out: bool,
+    message: String,
+    error: String
+}
+
+pub async fn logout_user(pool: web::Data<PgPool>, user: web::Json<UserLogout>) -> impl Responder {
+    let pool = pg_pool_handler(pool).expect("Could not connect to PG from logout handler");
+    let logout_response = User::logout(&pool, user.clone());
+
+    match logout_response {
+        Ok(user) => {
+            HttpResponse::Ok().json(UserLogoutResponse {
+                user_logged_out: true
+            })
+        },
+        Err(error) => {
+            HttpResponse::Ok().json(UserLogoutError {
+                user_logged_out: false,
+                message: String::from(format!("Could not log user {} out", user.id)),
+                error: error.to_string()
             })
         }
     }

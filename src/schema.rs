@@ -4,5 +4,6 @@ table! {
         name -> Varchar,
         email -> Varchar,
         password -> Varchar,
+        refresh_token -> Nullable<Varchar>,
     }
 }

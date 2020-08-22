@@ -1,7 +1,12 @@
+extern crate chrono;
+
+use chrono::{Duration, Utc};
+use std::convert::TryFrom;
+
 use diesel::{PgConnection, RunQueryDsl};
 use serde::{Serialize, Deserialize};
 
-use crate::modules::jwt::jwt_factory;
+use crate::modules::jwt::{jwt_factory, Claims};
 
 use crate::schema::users;
 use crate::models;
@@ -15,6 +20,8 @@ pub struct User {
     pub email: String,
     #[serde(skip)]
     pub password: String,
+    #[serde(skip)]
+    pub refresh_token: Option<String>
 }
 
 #[derive(Debug, Insertable, Serialize, Deserialize)]
@@ -35,12 +42,13 @@ pub struct UserLogin {
 pub struct UserLoggedIn {
     pub name: String,
     pub email: String,
-    pub jwt: String
+    pub jwt: String,
+    pub refresh_token: Option<String>
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    pub exp: usize,
+#[derive(Deserialize, Clone, Debug)]
+pub struct UserLogout {
+    pub id: i32
 }
 
 impl User {
@@ -109,45 +117,103 @@ impl User {
             .get_result::<User>(pool);
         
         match existing_user {
-           Ok(registered_user) => User::handle_login(registered_user, user),
+           Ok(registered_user) => User::handle_login(registered_user, user, pool),
            Err(error) => Err(String::from("User does not exist"))
+        }
+    }
+
+    pub fn logout(pool: &PgConnection, user: UserLogout) -> Result<User, diesel::result::Error> {
+        use crate::schema::users::dsl::*;
+        use crate::schema::users::dsl::{id, refresh_token};
+        use crate::diesel::QueryDsl;
+        use crate::diesel::ExpressionMethods;
+
+        let absent_string: Option<String> = None;
+
+        let user_without_refresh_token: Result<User, diesel::result::Error> = diesel::update(
+            users.filter(id.eq(user.id))
+        )
+        .set(refresh_token.eq(absent_string))
+        .get_result(pool);
+
+        match user_without_refresh_token {
+            Ok(user) => Ok(user),
+            Err(error) => Err(error)
         }
     }
 }
 
-
 trait UserPassWord {
-    fn handle_login(existing_user: User, user: actix_web::web::Json<models::user::UserLogin>) -> Result<UserLoggedIn, String>;
+    fn handle_login(existing_user: User, user: actix_web::web::Json<models::user::UserLogin>, pool: &PgConnection) -> Result<UserLoggedIn, String>;
 }
 
 impl UserPassWord for User {
 
-    fn handle_login(existing_user: User, user: actix_web::web::Json<models::user::UserLogin>) -> Result<UserLoggedIn, String> {
+    fn handle_login(existing_user: User, user: actix_web::web::Json<models::user::UserLogin>, pool: &PgConnection) -> Result<UserLoggedIn, String> {
+
+        use crate::schema::users::dsl::*;
+        use crate::schema::users::dsl::{id, refresh_token};
+        use crate::diesel::QueryDsl;
+        use crate::diesel::ExpressionMethods;
 
         let password_is_valid = verify_password(
             existing_user.password, 
             user.password.to_string()
         );
-        
-        match password_is_valid {
-            Ok(result) => {
-                match result {
-                    true => {
-                        let logged_in_user = UserLoggedIn {
-                            email: existing_user.email,
-                            jwt: jwt_factory(),
-                            name: existing_user.name
-                        };
-                        Ok(logged_in_user)
+
+        let one_week_from_now = Utc::now() + Duration::days(7);
+
+        let timestamp = usize::try_from(one_week_from_now.timestamp())
+            .unwrap();        
+
+        let refresh_token_claims = Claims {
+            exp: timestamp,
+        };
+
+        let refresh_jwt = jwt_factory(refresh_token_claims);
+
+        let user_with_refresh_token: Result<User, diesel::result::Error> = diesel::update(
+                users.filter(id.eq(existing_user.id))
+            )
+            .set(refresh_token.eq(refresh_jwt.clone()))
+            .get_result(pool);
+
+        match user_with_refresh_token {
+            Ok(user_with_session) => {
+                match password_is_valid {
+                    Ok(result) => {
+                        match result {
+                            true => {
+                                let fifteen_min_from_now = Utc::now() + Duration::minutes(15);
+
+                                let timestamp = usize::try_from(fifteen_min_from_now.timestamp())
+                                    .unwrap();
+
+                                let access_token_claims = Claims {
+                                    exp: timestamp
+                                };
+
+                                let logged_in_user = UserLoggedIn {
+                                    email: user_with_session.email,
+                                    jwt: jwt_factory(access_token_claims),
+                                    name: user_with_session.name,
+                                    refresh_token: user_with_session.refresh_token
+                                };
+                                Ok(logged_in_user)
+                            },
+                            false => {
+                                Err(String::from("Incorrect password"))
+                            }
+                        }
                     },
-                    false => {
-                        Err(String::from("Incorrect password"))
+                    Err(_) => {
+                        Err(String::from("Could not verify password"))
                     }
-                }
+                }        
             },
-            Err(_) => {
-                Err(String::from("Could not verify password"))
+            Err(error) => {
+                Err(String::from("Could not create refresh token"))
             }
-        }        
+        }
     }
 }
