@@ -20,11 +20,13 @@ pub mod modules;
 use db::db_connection::{establish_connection};
 use routes::user::user_routes;
 use routes::login::login;
+use routes::session::session;
 use handlers::health::status;
 use middleware::auth;
 
 use actix_web::{App, HttpServer, middleware::Logger, http, dev, Result};
 use actix_web::middleware::errhandlers::{ErrorHandlers, ErrorHandlerResponse};
+use actix_cors::Cors;
 
 use crate::config::Config;
 use dotenv::dotenv;
@@ -51,18 +53,18 @@ async fn main() -> Result<(), std::io::Error> {
     println!("Start server {:#?}", config);
 
     HttpServer::new(|| {
+        let cors = Cors::new().send_wildcard().max_age(3600).finish();
+
         App::new()
+            .wrap(ErrorHandlers::new().handler(http::StatusCode::INTERNAL_SERVER_ERROR, render_500))
             .wrap(Logger::default())
             .wrap(Logger::new("%a %t %r %s %b %{Referer}i %{User-Agent}i %T"))
-            .wrap(auth::Auth)
             .data(establish_connection())
+            .wrap(cors)
             .service(status)
             .service(login())
-            .service(user_routes())
-            .wrap(
-                ErrorHandlers::new()
-                    .handler(http::StatusCode::INTERNAL_SERVER_ERROR, render_500),
-            )
+            .service(user_routes().wrap(auth::Auth))
+            .service(session().wrap(auth::Auth))
     })
     .bind(format!("{}:{}", config.host, config.port))?
     .run()

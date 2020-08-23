@@ -6,7 +6,7 @@ use std::convert::TryFrom;
 use diesel::{PgConnection, RunQueryDsl};
 use serde::{Serialize, Deserialize};
 
-use crate::modules::jwt::{jwt_factory, Claims};
+use crate::modules::jwt::{jwt_factory, Claims, validate_token};
 
 use crate::schema::users;
 use crate::models;
@@ -38,7 +38,7 @@ pub struct UserLogin {
     pub password: String
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct UserLoggedIn {
     pub name: String,
     pub email: String,
@@ -141,13 +141,90 @@ impl User {
             Err(error) => Err(error)
         }
     }
+
+
 }
 
-trait UserPassWord {
+pub trait UserManager {
     fn handle_login(existing_user: User, user: actix_web::web::Json<models::user::UserLogin>, pool: &PgConnection) -> Result<UserLoggedIn, String>;
+    fn validate_refresh_token(pool: &PgConnection, refresh_token: String, user_id: &i32) -> Result<bool, String>;
+    fn reauth(pool: &PgConnection, user_id: &i32) -> Result<NewTokens, String>;
 }
 
-impl UserPassWord for User {
+#[derive(Debug, Clone)]
+pub struct NewTokens {
+    pub refresh_token: String,
+    pub access_token: String
+}
+
+impl UserManager for User {
+
+    fn reauth(pool: &PgConnection, user_id: &i32) -> Result<NewTokens, String> {
+        use crate::schema::users::dsl::{users, id, refresh_token};
+        use crate::diesel::QueryDsl;
+        use crate::diesel::ExpressionMethods;
+        
+        let one_week_from_now = Utc::now() + Duration::days(7);
+
+        let refresh_timestamp = usize::try_from(one_week_from_now.timestamp())
+            .unwrap();        
+
+        let refresh_token_claims = Claims {
+            exp: refresh_timestamp,
+        };
+
+        let refresh_jwt = jwt_factory(refresh_token_claims);
+
+        let user_with_refresh_token: Result<User, diesel::result::Error> = diesel::update(
+                users.filter(id.eq(user_id))
+            )
+            .set(refresh_token.eq(refresh_jwt.clone()))
+            .get_result(pool);
+
+        match user_with_refresh_token {
+            Ok(updated_user) => {
+                
+                let fifteen_min_from_now = Utc::now() + Duration::minutes(15);
+
+                let access_timestamp = usize::try_from(fifteen_min_from_now.timestamp())
+                    .unwrap();
+
+                let access_token_claims = Claims {
+                    exp: access_timestamp
+                };
+
+                let new_access_token = jwt_factory(access_token_claims);
+
+                Ok(NewTokens {
+                    refresh_token: updated_user.refresh_token.unwrap(),
+                    access_token: new_access_token
+                })
+            },
+            Err(error) => Err(String::from(format!("Could not reauth user: {}", error)))
+        }
+    }
+
+    fn validate_refresh_token(pool: &PgConnection, refresh_token: String, user_id: &i32) -> Result<bool, String> {
+        use crate::schema::users::dsl::{users, id};
+        use crate::diesel::QueryDsl;
+        use crate::diesel::ExpressionMethods;
+
+        let user = users
+            .filter(id.eq(&user_id))
+            .get_result::<User>(pool);
+
+        match user {
+            Ok(selected_user) => {
+                let user_refresh_token = selected_user.refresh_token.unwrap();
+
+                match user_refresh_token.eq(&refresh_token) {
+                    true => Ok(validate_token(&user_refresh_token)),
+                    false => Err(String::from("Failed to reauth: refresh tokens do not match."))
+                }
+            },
+            Err(error) => Err(String::from(format!("Could not find a user with that ID: {}", error)))
+        }
+    }
 
     fn handle_login(existing_user: User, user: actix_web::web::Json<models::user::UserLogin>, pool: &PgConnection) -> Result<UserLoggedIn, String> {
 

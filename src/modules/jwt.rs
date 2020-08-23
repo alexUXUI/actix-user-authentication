@@ -1,5 +1,7 @@
 use jsonwebtoken::{encode, Header, EncodingKey};
 use crate::config::Config;
+use jsonwebtoken::{decode, Validation, DecodingKey};
+use crate::schema;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -24,5 +26,19 @@ pub fn jwt_factory(claims: Claims) -> String {
     match token {
         Ok(jwt) => jwt,
         _ => String::from("Could not create token")
+    }
+}
+
+pub fn validate_token(token: &str) -> bool {
+    let config = Config::from_env()
+        .expect("Must set env vars in config file");
+    
+    let validation = Validation { ..Validation::default() };
+    let decoding_key = &DecodingKey::from_secret(config.jwt_secret_key.as_bytes());
+    let decoded_access_token = decode::<Claims>(&token, decoding_key, &validation);
+
+    match decoded_access_token {
+        Ok(_) => true,
+        Err(_) => false
     }
 }

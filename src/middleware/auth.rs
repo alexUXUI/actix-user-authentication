@@ -9,7 +9,7 @@ use futures::future::{ok, Ready};
 use futures::Future;
 
 use crate::config::Config;
-use crate::modules::jwt::{Claims};
+use crate::modules::jwt::{Claims, validate_token};
 
 #[derive(Debug)]
 pub struct Auth;
@@ -62,51 +62,38 @@ where
 
     // Process the request and return the response asynchronously.
     fn call(&mut self, req: ServiceRequest) -> Self::Future {
-        let login_route = String::from("/app/login");
 
-        match req.path() == login_route {
-            true => {
-                let fut = self.service.call(req);
-                Box::pin(async move {
-                    let res = fut.await?;
-                    Ok(res)
-                })
-            }
-            false => {
+        let auth_header = req
+            .headers()
+            .get(actix_web::http::header::AUTHORIZATION);
+            
+        match auth_header {
+            Some(access_token) => {
 
-                let auth_header: &str = req
-                    .headers()
-                    .get(actix_web::http::header::AUTHORIZATION)
-                    .unwrap()
-                    .to_str()
-                    .unwrap();
-                    
-                if auth_header.is_empty() {
-
-                    Box::pin(async { Err(ErrorUnauthorized("User not authorized")) })
-
-                } else {
-
-                    let config = Config::from_env().expect("Must set env vars in config file");
-                    let validation = Validation { ..Validation::default() };
-                
-                    match decode::<Claims>(
-                        &auth_header, 
-                        &DecodingKey::from_secret(config.jwt_secret_key.as_bytes()), 
-                        &validation
-                    ) {
-                        Ok(_) => {
-                            let fut = self.service.call(req);
-                            Box::pin(async move {
-                                let res = fut.await?;
-                                Ok(res)
-                            })
-                        },
-                        Err(_) => {
-                            Box::pin(async { Err(ErrorUnauthorized("JWT invalid")) })
-                        }
+                let token_is_still_valid = validate_token(
+                    &access_token.to_str().unwrap().to_string()
+                );
+            
+                match token_is_still_valid {
+                    true => {
+                        let fut = self.service.call(req);
+                        Box::pin(async move {
+                            let res = fut.await?;
+                            Ok(res)
+                        })
+                    },
+                    false => {
+                        Box::pin(async { 
+                            Err(ErrorUnauthorized("JWT invalid")) 
+                        })
                     }
                 }
+
+            },
+            None => {
+                Box::pin(async { 
+                    Err(ErrorUnauthorized("No Authorization header on request")) 
+                })
             }
         }
     }

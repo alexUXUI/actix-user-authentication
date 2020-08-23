@@ -1,6 +1,7 @@
-use crate::models::user::{User, NewUser, UserLogin, UserLoggedIn, UserLogout};
+use crate::models::user::{User, UserManager, NewUser, UserLogin, UserLoggedIn, UserLogout, NewTokens};
 use crate::db::db_connection::{ pg_pool_handler, PgPool };
-use actix_web::{ Responder, web, HttpResponse };
+use actix_web::{ Responder, web, HttpResponse, http::{Cookie}, HttpRequest, HttpMessage };
+use crate::modules::jwt::{validate_token};
 
 #[derive(Serialize)]
 pub struct UsersResponse {
@@ -76,10 +77,20 @@ pub async fn login_user(pool: web::Data<PgPool>, user: web::Json<UserLogin>) -> 
 
     match logged_in_user {
         Ok(user) => {
-            HttpResponse::Ok().json(UserLoginResponse {
-                user_logged_in: user
-            })
+
+            let cookie = Cookie::build("refresh_token", user.clone().refresh_token.unwrap())
+                .domain("http://localhost:3000")
+                .secure(true)
+                .http_only(true)
+                .finish();
+
+            HttpResponse::Ok()
+                .cookie(cookie)
+                .json(UserLoginResponse {
+                    user_logged_in: user
+                })
         },
+
         Err(error) => {
             HttpResponse::Ok().json(UserLoginError {
                 message: String::from("Could not log user in"),
@@ -116,6 +127,74 @@ pub async fn logout_user(pool: web::Data<PgPool>, user: web::Json<UserLogout>) -
                 user_logged_out: false,
                 message: String::from(format!("Could not log user {} out", user.id)),
                 error: error.to_string()
+            })
+        }
+    }
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct ReauthResponse {
+    new_acccess_token: String
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ReauthRequestBody {
+    id: i32
+}
+
+pub async fn reauth_user(req: HttpRequest, pool: web::Data<PgPool>, user: web::Json<ReauthRequestBody>) -> impl Responder {
+
+    let refresh_token = req
+        .cookie("refresh_token")
+        .unwrap()
+        .to_string();
+
+    let token_is_still_valid = validate_token(&refresh_token);
+
+    let pg_pool = pg_pool_handler(pool).expect("Could not connect to PG from reauth EP");
+
+    match token_is_still_valid {
+        true => {
+            let refresh_token_is_valid = User::validate_refresh_token(&pg_pool, refresh_token, &user.id);
+
+            match refresh_token_is_valid {
+                Ok(token) => {
+                    let reauthed_user = User::reauth(&pg_pool, &user.id);
+
+                    match reauthed_user {
+                        Ok(new_tokens) => {
+                            let NewTokens { refresh_token, access_token } = new_tokens;
+                            
+                            let cookie = Cookie::build("refresh_token", refresh_token)
+                                .domain("http://localhost:3000")
+                                .secure(true)
+                                .http_only(true)
+                                .finish();
+
+                            HttpResponse::Ok()
+                                .cookie(cookie)
+                                .json(ReauthResponse {
+                                    new_acccess_token: access_token
+                                }
+                            )
+                        },
+                        Err(error) => {
+                            HttpResponse::Ok().json(ReauthResponse {
+                                new_acccess_token: String::from(format!("failed: {}", error))
+                            })
+                        }
+                    }
+                },
+                Err(error) => {
+                    HttpResponse::Ok().json(ReauthResponse {
+                        new_acccess_token: String::from(format!("failed: {}", error))
+                    })
+                }
+            }
+        },
+        false => {
+            HttpResponse::Ok().json(ReauthResponse {
+                new_acccess_token: String::from("failed")
             })
         }
     }
