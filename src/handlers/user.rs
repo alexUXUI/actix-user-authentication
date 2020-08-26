@@ -5,7 +5,7 @@ use crate::modules::jwt::{validate_token};
 
 #[derive(Serialize)]
 pub struct UsersResponse {
-    users: Vec<User>
+    pub users: Vec<User>
 }
 
 pub async fn get_users(pool: web::Data<PgPool>) -> impl Responder {
@@ -17,7 +17,7 @@ pub async fn get_users(pool: web::Data<PgPool>) -> impl Responder {
 
 #[derive(Serialize)]
 pub struct UserResponse {
-    user: User
+    pub user: User
 }
 
 pub async fn get_user(pool: web::Data<PgPool>, id: web::Path<i32>) -> impl Responder {
@@ -27,16 +27,16 @@ pub async fn get_user(pool: web::Data<PgPool>, id: web::Path<i32>) -> impl Respo
     HttpResponse::Ok().json(UserResponse { user })
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct CreateUserResponse {
-    name: String,
-    email: String
+    pub name: String,
+    pub email: String
 }
 
 #[derive(Serialize)] 
 pub struct CreateUserError {
-    message: String,
-    error: String
+    pub message: String,
+    pub error: String
 }
 
 pub async fn create_user(pool: web::Data<PgPool>, user: web::Json<NewUser>) -> impl Responder {
@@ -59,15 +59,15 @@ pub async fn create_user(pool: web::Data<PgPool>, user: web::Json<NewUser>) -> i
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct UserLoginResponse {
-    user_logged_in: UserLoggedIn
+    pub user_logged_in: UserLoggedIn
 }
 
 #[derive(Debug, Serialize)]
 pub struct UserLoginError {
-    message: String,
-    error: String
+    pub message: String,
+    pub error: String
 }
 
 pub async fn login_user(pool: web::Data<PgPool>, user: web::Json<UserLogin>) -> impl Responder {
@@ -117,7 +117,7 @@ pub async fn logout_user(pool: web::Data<PgPool>, user: web::Json<UserLogout>) -
     let logout_response = User::logout(&pool, user.clone());
 
     match logout_response {
-        Ok(user) => {
+        Ok(_user) => {
             HttpResponse::Ok().json(UserLogoutResponse {
                 user_logged_out: true
             })
@@ -158,7 +158,7 @@ pub async fn reauth_user(req: HttpRequest, pool: web::Data<PgPool>, user: web::J
             let refresh_token_is_valid = User::validate_refresh_token(&pg_pool, refresh_token, &user.id);
 
             match refresh_token_is_valid {
-                Ok(token) => {
+                Ok(_token) => {
                     let reauthed_user = User::reauth(&pg_pool, &user.id);
 
                     match reauthed_user {

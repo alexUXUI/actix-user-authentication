@@ -1,7 +1,6 @@
 use jsonwebtoken::{encode, Header, EncodingKey};
 use crate::config::Config;
 use jsonwebtoken::{decode, Validation, DecodingKey};
-use crate::schema;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {

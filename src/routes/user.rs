@@ -1,6 +1,5 @@
 use actix_web::{ Scope, web };
 use crate::handlers::user::*;
-use crate::middleware::auth;
 
 pub fn user_routes() -> Scope {
     web::scope("/users")

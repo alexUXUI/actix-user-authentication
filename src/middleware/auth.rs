@@ -4,12 +4,10 @@ use std::task::{Context, Poll};
 use actix_service::{Service, Transform};
 use actix_web::{dev::ServiceRequest, dev::ServiceResponse, Error, error::ErrorUnauthorized};
 
-use jsonwebtoken::{decode, Validation, DecodingKey};
 use futures::future::{ok, Ready};
 use futures::Future;
 
-use crate::config::Config;
-use crate::modules::jwt::{Claims, validate_token};
+use crate::modules::jwt::{validate_token};
 
 #[derive(Debug)]
 pub struct Auth;

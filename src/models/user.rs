@@ -38,7 +38,7 @@ pub struct UserLogin {
     pub password: String
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UserLoggedIn {
     pub name: String,
     pub email: String,
@@ -118,7 +118,7 @@ impl User {
         
         match existing_user {
            Ok(registered_user) => User::handle_login(registered_user, user, pool),
-           Err(error) => Err(String::from("User does not exist"))
+           Err(_error) => Err(String::from("User does not exist"))
         }
     }
 
@@ -288,7 +288,7 @@ impl UserManager for User {
                     }
                 }        
             },
-            Err(error) => {
+            Err(_error) => {
                 Err(String::from("Could not create refresh token"))
             }
         }
